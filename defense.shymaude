@@ -1,0 +1,260 @@
+fmod	PARAMETERS is
+	pr	NAT .
+	pr	FLOAT .
+
+	*** Time step
+	ops dt : -> Float .
+	eq	dt = 0.1 .
+	
+	*** Model parameters
+	ops N G r severity alpha : -> Nat .
+	eq	N = 20 .
+	eq	G = 8 .
+	eq	r = 2 .
+	eq	severity = 3 .
+	eq	alpha = r * severity .
+	
+	*** Process rates
+	ops propogateRate formGroupRate alertGroupRate detectRate alertRate groupDeliveryRate : -> Float .
+	eq propogateRate = dt .
+	eq formGroupRate = dt .
+	eq alertGroupRate = dt .
+	eq detectRate = dt .
+	eq alertRate = dt .
+	eq groupDeliveryRate = dt .
+	
+	*** Detection probabilities
+	ops	fpRate detectionProb : -> Float .
+	eq	fpRate = 0.1 .
+	eq	detectionProb = 0.95 .
+endfm
+
+fmod COMMANDS is
+	pr	OBJECT .
+	pr	DELAYED-MESSAGE .
+
+	op propogate : -> Attribute [ctor] .
+	op infect : -> Attribute [ctor] .
+	op formGroups : -> Attribute [ctor] .
+	op detect : -> Attribute [ctor] .
+	op alertGroup : -> Attribute [ctor] .
+	op alert : -> Attribute [ctor] .
+endfm
+
+shymod	NODE is
+	pr COMMANDS .
+	class Node is disc
+		alert : Nat,
+		count : Nat,
+		alerts : Nat,
+		group : Set{Nat},
+		infected : Bool,
+		detected : Bool,
+		filtering : Bool,
+		formingGroup : Set{Nat},
+		usedNodes : Set{Nat},
+		groupForNode : Nat,
+		groupNode : Nat,
+		groupNodeCount : Nat
+	endclass
+endfm
+
+shymod WORM-DYNAMICS is
+	pr	SYSTEM .
+
+	var attrSet : AttributeSet .
+	var id n : Nat .
+	var t a : Float .
+	var infected : Bool .
+
+	*** Propogation
+	rl	< id : Node | infected : true, filtering : false, attrSet >
+		< id <- propogate >
+		=>
+		< id : Node | infected : true, filtering : false, attrSet >
+		< (id + 1 + sampleNat(N - 1)) rem N <- infect >
+		[ D, < id <- propogate >] with probability D:= Exponential(propogateRate) .
+	
+	*** Can't propogate if filtering
+	rl	< id : Node | infected : true, filtering : true, attrSet >
+		< id <- propogate >
+		=>
+		< id : Node | infected : true, filtering : true, attrSet >
+		[ D, < id <- propogate >] with probability D:= Exponential(propogateRate) .
+
+	*** Infection of not infected node
+	rl	< id : Node | infected : false, filtering : false, attrSet >
+		< id <- infect >
+		=>
+		< id : Node | infected : true, filtering : false, attrSet >
+		[ D, < id <- propogate >] with probability D:= Exponential(propogateRate) .
+	
+	*** Infection of infected node doesn't have any effect
+	rl	< id : Node | infected : true, filtering : false, attrSet >
+		< id <- infect >
+		=>
+		< id : Node | infected : true, filtering : false, attrSet > .
+	
+	*** Can't infect filtering node
+	rl	< id : Node | filtering : true, attrSet >
+		< id <- infect >
+		=>
+		< id : Node | filtering : true, attrSet > .
+endshy
+
+shymod ALERT-GROUP-DYNAMICS is
+	pr	SYSTEM .
+
+	var attrSet : AttributeSet .
+	var id n groupNode groupNodeCount groupForNode : Nat .
+	var t a : Float .
+	var formingGroup usedNodes group formedGroup : Set{Nat} .
+	
+	rl	< id : Node | attrSet >
+		< id <- formGroups >
+		=>
+		< id : Node | formingGroup : empty, usedNodes : empty, groupNode : sampleNat(N), groupForNode : N, groupNodeCount : G - 1, attrSet > .
+		
+		
+	rl	< id : Node | formingGroup : formingGroup, usedNodes : usedNodes, groupNode : groupNode, groupNodeCount : s groupNodeCount, attrSet >
+		=>
+		if groupNode in formingGroup or groupNode in usedNodes
+			then
+				< id : Node | formingGroup : formingGroup, usedNodes : usedNodes, groupNode : sampleNat(N), groupNodeCount : s groupNodeCount, attrSet >
+			else
+				< id : Node | formingGroup : insert(groupNode, formingGroup), usedNodes : if | usedNodes | < N - 1 then insert(groupNode, usedNodes) else empty fi, groupNode : sampleNat(N), groupNodeCount : groupNodeCount, attrSet >
+		fi .	
+	
+	rl	< id : Node | formingGroup : formingGroup, usedNodes : usedNodes, groupNode : groupNode, groupNodeCount : 0, groupForNode : s groupForNode, attrSet >
+		=>
+		if groupNode in formingGroup or groupNode in usedNodes
+			then
+				< id : Node | formingGroup : formingGroup, usedNodes : usedNodes, groupNode : sampleNat(N), groupNodeCount : 0, groupForNode : s groupForNode, attrSet >
+			else
+				< id : Node | formingGroup : empty, usedNodes : if | usedNodes | < N - 1 then insert(groupNode, usedNodes) else empty fi, groupNode : sampleNat(N), groupNodeCount : G - 1, groupForNode : groupForNode, attrSet >
+				[ D, < groupForNode <- group : insert(groupNode, formingGroup) > ] with probability D:= Exponential(groupDeliveryRate)
+		fi .
+		
+	rl	< id : Node | formingGroup : formingGroup, usedNodes : usedNodes, groupNode : groupNode, groupNodeCount : 0, groupForNode : 0, attrSet >
+		=>
+		< id : Node | attrSet >
+		[ D, < id <- formGroups > ] with probability D:= Exponential(formGroupRate) .
+
+	rl	< id : Node | group : group, attrSet >
+		< id <- group : formedGroup >
+		=>
+		< id : Node | group : formedGroup, attrSet > .
+endshy
+
+shymod DEFENSE-DYNAMICS is
+	pr SYSTEM .
+	
+	op	sendGroupAlerts : Set{Nat} -> Conf [ctor] .
+	op	applyFiltering : Object -> TickingConf [ctor] .
+
+	var conf : Conf .
+	var attrSet : AttributeSet .
+	var infected detected filtering : Bool .
+	var group : Set{Nat} .
+	var id count alert alerts : Nat .
+	
+	***Detection
+	rl	< id : Node | infected : infected, detected : detected, attrSet >
+		< id <- detect >
+		=>
+		< id : Node | infected : infected,
+					  detected : if infected
+									***Detection happens with some probability
+									then sampleBernulli(detectionProb) 
+									***If not infected may raise a false alarm with some rate
+									else sampleBernulli(fpRate)
+							     fi
+					, attrSet >
+		[ D, < id <- detect > ] with probability D:= Exponential(detectRate) .
+
+	***Alerting
+	rl	< id : Node | infected : infected, detected : detected, group : group, attrSet >
+		< id <- alertGroup >
+		=>
+		if(detected) then sendGroupAlerts(group) else none fi
+		< id : Node | infected : infected, detected : detected, group : group, attrSet >
+		[ D, < id <- alertGroup > ] with probability D:= Exponential(alertRate) .
+
+	eq	sendGroupAlerts((id, group)) = < id <- alert > sendGroupAlerts(group) .
+	eq	sendGroupAlerts(empty) = none .
+	
+	rl	< id : Node | alerts : alerts, attrSet >
+		< id <- alert >
+		=>
+		< id : Node | alerts : s alerts, attrSet > .
+
+	***Tick Update
+	eq	processTick(< id : Node | detected : detected, alert : alert, count : count, alerts : alerts, attrSet > conf)
+		=
+		applyFiltering(< id : Node | detected : detected,
+					  count : if detected and count == 0 then sampleNat(alpha) else alert fi,
+					  alert : min(alpha,
+									if detected and count == 0
+										then alert + severity * (alerts + 1)
+										else alert + severity * alerts
+									fi
+								 ),
+					  alerts : 0
+					, attrSet >)
+		processTick(conf) .
+
+	eq	applyFiltering(< id : Node | alert : alert, count : count, filtering : filtering, attrSet >)
+		=
+		< id : Node | alert : max(0, alert - 1),
+					  count : max(0, count - 1),
+					  filtering : if alert == alpha
+									then true
+									else if alert == 0 then false else filtering fi
+								  fi
+					, attrSet > .
+endshy
+
+mod SYSTEM-DYNAMICS is
+	inc WORM-DYNAMICS .
+	inc ALERT-GROUP-DYNAMICS .
+	inc DEFENSE-DYNAMICS .
+endm
+
+mod STATE-FORMULAE is
+	inc	SYSTEM-DYNAMICS .
+
+	op	val	: Nat Config -> Float [ctor] .
+	op	val	: Nat Conf -> Float [ctor] .
+	
+	op getTime : Config -> Float .
+	
+	var config : Config .
+	var conf : Conf .
+	var	activeConf : ActiveConf .
+	var msg : Message .
+	var dmsg : DelayedMessage .
+
+	var attrSet : AttributeSet .
+	var t : Float .
+	var	id n : Nat .
+	var	infected filtering : Bool .
+
+	***val(1) = current time
+	eq	val(1, config) = getTime(config) .
+	
+	eq getTime({conf, time(t)}) = t .
+
+	***val(i) = state function if i > 1 .
+	eq	val(s s id, { activeConf, time(t) }) = val(s s id, activeConf) .
+
+	***val(11) = percent of infected nodes
+	op	percentInf : Conf Nat -> Float [ctor] .
+
+	eq	val(11, conf) = percentInf(conf, 0) .
+
+	eq percentInf(dmsg conf, n) = percentInf(conf, n) .
+
+	eq	percentInf(< id : Node | infected : infected, attrSet > activeConf, n) = percentInf(activeConf, if infected then s n else n fi) .			
+	eq	percentInf(none, n) = float(n) / float(N) .
+
+endm

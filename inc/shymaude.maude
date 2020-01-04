@@ -1,0 +1,103 @@
+in apmaude.maude
+load stsampler.maude
+
+fmod SET-NAT is
+  pr  SET{Nat} .
+endfm
+
+fmod CLASS is
+	sort	Class .
+endfm
+
+fmod ATTRIBUTE-SET is
+	pr	NAT .
+	pr	BOOL .
+	pr	FLOAT .
+	pr  SET-NAT .
+
+	sort	Attribute .
+	sort	AttributeSet .	
+	subsort	Attribute < AttributeSet .	
+	op	none : -> Attribute [ctor] .
+	op	_,_ : AttributeSet AttributeSet -> AttributeSet [ctor assoc comm id: none] .
+endfm
+
+fmod OBJECT is
+	pr	CLASS .
+	pr	ATTRIBUTE-SET .
+
+	sort	Object .
+	op	<_:_|_> : Nat Class AttributeSet -> Object [ctor format (d d d d d d d d)] .
+endfm
+
+fmod MESSAGE is
+	pr	ATTRIBUTE-SET .
+
+	sort Message .
+	op	<_<-_> : Nat AttributeSet -> Message [ctor format (d d d d d d)] .
+endfm
+
+fmod DELAYED-MESSAGE is
+	pr	MESSAGE .
+
+	sort DelayedMessage .
+	op	[_,_] : Float Message -> DelayedMessage [ctor format (d d d d d d)] .
+endfm
+
+mod	SYSTEM is
+	inc	ST-SAMPLER .
+	inc	PARAMETERS .
+	inc	OBJECT .
+	inc MESSAGE .
+	inc DELAYED-MESSAGE .
+	inc NODE .
+
+	sorts	Conf ActiveConf TickingConf .
+	subsort Conf < ActiveConf .
+	subsort Conf < TickingConf .
+	subsort	Object < Conf .
+	subsort	DelayedMessage < Conf .
+	subsort	Message < ActiveConf .
+	op	none : -> Conf [ctor] .
+	op	__ : Conf Conf -> Conf [ctor assoc comm id: none format (d nt d) ] .
+	op	__ : ActiveConf ActiveConf -> ActiveConf [ctor assoc comm id: none format (d nt d) ] .
+	op	__ : TickingConf TickingConf -> TickingConf [ctor assoc comm id: none format (d nt d) ] .
+
+	sort	Config .
+	op	{_,time(_)} : ActiveConf Float -> Config [ctor format (d nt d nt d d d d d)] .
+	op	{_,time(_)} : TickingConf Float -> Config [ctor format (d nt d nt d d d d d)] .
+		
+	op	tick : Config -> Config [ctor] .
+
+	op	processTick : Conf -> TickingConf [ctor] .
+
+	var config : Config .
+	var conf : Conf .
+	var id : Nat .
+	var t : Float .
+
+	op	initState : -> Config [ctor] .
+	op	init : Nat -> ActiveConf [ctor] .
+	eq	initState =  { init(N - 1), time(0.0) } .
+	eq	init(s id)
+		=
+		init(id)
+		< s id : Node | infected : false, detected : false, filtering : false, alert : 0, alerts : 0, count : 0, group : empty >
+		[ sampleExp(detectRate), < id <- detect > ]
+		[ sampleExp(alertGroupRate), < id <- alertGroup > ] .
+		
+	eq	init(0) = < 0 : Node | infected : true, detected : false, filtering : false, alert : 0, alerts : 0, count : 0, group : empty >
+		< 0 <- formGroups >
+		[ sampleExp(detectRate), < 0 <- detect > ]
+		[ sampleExp(alertGroupRate), < 0 <- alertGroup > ]
+		[ sampleExp(propogateRate), < 0 <- propogate > ] .
+
+	eq tick({conf, time(t)}) = {processTick(conf), time(t + dt)} .
+	
+	var msg : Message .
+	
+	rl	processTick([t, msg] conf) => [t - dt, msg] processTick(conf) .
+	eq	processTick(none) = none .
+	ceq [t, msg] = msg if t <= 0.0 . 
+
+endm

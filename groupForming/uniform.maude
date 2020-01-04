@@ -1,0 +1,43 @@
+mod ALERT-GROUP-DYNAMICS is
+	pr	SYSTEM .
+
+	var attrSet : AttributeSet .
+	var id n groupNode groupNodeCount groupForNode : Nat .
+	var t a : Float .
+	var formingGroup usedNodes group formedGroup : Set{Nat} .
+	
+	rl	< id : Node | attrSet >
+		< id <- formGroups >
+		=>
+		< id : Node | formingGroup : empty, usedNodes : empty, groupNode : sampleNat(N), groupForNode : N, groupNodeCount : G - 1, attrSet > .
+		
+		
+	rl	< id : Node | formingGroup : formingGroup, usedNodes : usedNodes, groupNode : groupNode, groupNodeCount : s groupNodeCount, attrSet >
+		=>
+		if groupNode in formingGroup or groupNode in usedNodes
+			then
+				< id : Node | formingGroup : formingGroup, usedNodes : usedNodes, groupNode : sampleNat(N), groupNodeCount : s groupNodeCount, attrSet >
+			else
+				< id : Node | formingGroup : insert(groupNode, formingGroup), usedNodes : if | usedNodes | < N - 1 then insert(groupNode, usedNodes) else empty fi, groupNode : sampleNat(N), groupNodeCount : groupNodeCount, attrSet >
+		fi .	
+	
+	rl	< id : Node | formingGroup : formingGroup, usedNodes : usedNodes, groupNode : groupNode, groupNodeCount : 0, groupForNode : s groupForNode, attrSet >
+		=>
+		if groupNode in formingGroup or groupNode in usedNodes
+			then
+				< id : Node | formingGroup : formingGroup, usedNodes : usedNodes, groupNode : sampleNat(N), groupNodeCount : 0, groupForNode : s groupForNode, attrSet >
+			else
+				< id : Node | formingGroup : empty, usedNodes : if | usedNodes | < N - 1 then insert(groupNode, usedNodes) else empty fi, groupNode : sampleNat(N), groupNodeCount : G - 1, groupForNode : groupForNode, attrSet >
+				[ sampleExp(groupDeliveryRate), < groupForNode <- group : insert(groupNode, formingGroup) > ]
+		fi .
+		
+	rl	< id : Node | formingGroup : formingGroup, usedNodes : usedNodes, groupNode : groupNode, groupNodeCount : 0, groupForNode : 0, attrSet >
+		=>
+		< id : Node | attrSet >
+		[ sampleExp(formGroupRate), < id <- formGroups > ] .
+
+	rl	< id : Node | group : group, attrSet >
+		< id <- group : formedGroup >
+		=>
+		< id : Node | group : formedGroup, attrSet > .
+endm

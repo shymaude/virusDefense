@@ -1,0 +1,50 @@
+mod ALERT-GROUP-DYNAMICS is
+	pr	SYSTEM .
+
+	var attrSet : AttributeSet .
+	var id n groupNode groupNodeCount groupForNode : Nat .
+	var t a : Float .
+	var formingGroup group formedGroup : Set{Nat} .
+	var gid : Int .
+
+	op  sampleGroupId : Nat -> Int .
+	op  adjustId : Int -> Nat .
+	
+	eq  sampleGroupId(id) = adjustId(sampleIntUniform(id - G, id + G)) .
+	eq  adjustId(gid) = if gid < 0 then 0 else if gid > N then N - 1 else gid fi fi .
+
+	rl	< id : Node | attrSet >
+		< id <- formGroups >
+		=>
+		< id : Node | formingGroup : empty, groupNode : sampleGroupId(id), groupForNode : N, groupNodeCount : G - 1, attrSet > .
+		
+		
+	rl	< id : Node | formingGroup : formingGroup, groupNode : groupNode, groupNodeCount : s groupNodeCount, attrSet >
+		=>
+		if groupNode in formingGroup
+			then
+				< id : Node | formingGroup : formingGroup, groupNode : sampleGroupId(id) , groupNodeCount : groupNodeCount, attrSet >
+			else
+				< id : Node | formingGroup : insert(groupNode, formingGroup), groupNode : sampleGroupId(id), groupNodeCount : groupNodeCount, attrSet >
+		fi .	
+	
+	rl	< id : Node | formingGroup : formingGroup, groupNode : groupNode, groupNodeCount : 0, groupForNode : s groupForNode, attrSet >
+		=>
+		if groupNode in formingGroup
+			then
+				< id : Node | formingGroup : formingGroup, groupNode : sampleGroupId(id), groupNodeCount : 0, groupForNode : groupForNode, attrSet >
+			else
+				< id : Node | formingGroup : empty, groupNode : sampleGroupId(id), groupNodeCount : G - 1, groupForNode : groupForNode, attrSet >
+				[ sampleExp(groupDeliveryRate), < groupForNode <- group : insert(groupNode, formingGroup) > ]
+		fi .
+		
+	rl	< id : Node | formingGroup : formingGroup, groupNode : groupNode, groupNodeCount : 0, groupForNode : 0, attrSet >
+		=>
+		< id : Node | attrSet >
+		[ sampleExp(formGroupRate), < id <- formGroups > ] .
+
+	rl	< id : Node | group : group, attrSet >
+		< id <- group : formedGroup >
+		=>
+		< id : Node | group : formedGroup, attrSet > .
+endm

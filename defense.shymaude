@@ -68,7 +68,7 @@ shymod WORM-DYNAMICS is
 	var infected : Bool .
 
 	*** Propogation
-	rl	< id : Node | infected : true, filtering : false, attrSet >
+	prl	< id : Node | infected : true, filtering : false, attrSet >
 		< id <- propogate >
 		=>
 		< id : Node | infected : true, filtering : false, attrSet >
@@ -76,14 +76,14 @@ shymod WORM-DYNAMICS is
 		[ D, < id <- propogate >] with probability D:= Exponential(propogateRate) .
 	
 	*** Can't propogate if filtering
-	rl	< id : Node | infected : true, filtering : true, attrSet >
+	prl	< id : Node | infected : true, filtering : true, attrSet >
 		< id <- propogate >
 		=>
 		< id : Node | infected : true, filtering : true, attrSet >
 		[ D, < id <- propogate >] with probability D:= Exponential(propogateRate) .
 
 	*** Infection of not infected node
-	rl	< id : Node | infected : false, filtering : false, attrSet >
+	prl	< id : Node | infected : false, filtering : false, attrSet >
 		< id <- infect >
 		=>
 		< id : Node | infected : true, filtering : false, attrSet >
@@ -125,7 +125,7 @@ shymod ALERT-GROUP-DYNAMICS is
 				< id : Node | formingGroup : insert(groupNode, formingGroup), usedNodes : if | usedNodes | < N - 1 then insert(groupNode, usedNodes) else empty fi, groupNode : sampleNat(N), groupNodeCount : groupNodeCount, attrSet >
 		fi .	
 	
-	rl	< id : Node | formingGroup : formingGroup, usedNodes : usedNodes, groupNode : groupNode, groupNodeCount : 0, groupForNode : s groupForNode, attrSet >
+	prl	< id : Node | formingGroup : formingGroup, usedNodes : usedNodes, groupNode : groupNode, groupNodeCount : 0, groupForNode : s groupForNode, attrSet >
 		=>
 		if groupNode in formingGroup or groupNode in usedNodes
 			then
@@ -135,7 +135,7 @@ shymod ALERT-GROUP-DYNAMICS is
 				[ D, < groupForNode <- group : insert(groupNode, formingGroup) > ] with probability D:= Exponential(groupDeliveryRate)
 		fi .
 		
-	rl	< id : Node | formingGroup : formingGroup, usedNodes : usedNodes, groupNode : groupNode, groupNodeCount : 0, groupForNode : 0, attrSet >
+	prl	< id : Node | formingGroup : formingGroup, usedNodes : usedNodes, groupNode : groupNode, groupNodeCount : 0, groupForNode : 0, attrSet >
 		=>
 		< id : Node | attrSet >
 		[ D, < id <- formGroups > ] with probability D:= Exponential(formGroupRate) .
@@ -159,7 +159,7 @@ shymod DEFENSE-DYNAMICS is
 	var id count alert alerts : Nat .
 	
 	***Detection
-	rl	< id : Node | infected : infected, detected : detected, attrSet >
+	prl	< id : Node | infected : infected, detected : detected, attrSet >
 		< id <- detect >
 		=>
 		< id : Node | infected : infected,
@@ -173,7 +173,7 @@ shymod DEFENSE-DYNAMICS is
 		[ D, < id <- detect > ] with probability D:= Exponential(detectRate) .
 
 	***Alerting
-	rl	< id : Node | infected : infected, detected : detected, group : group, attrSet >
+	prl	< id : Node | infected : infected, detected : detected, group : group, attrSet >
 		< id <- alertGroup >
 		=>
 		if(detected) then sendGroupAlerts(group) else none fi
